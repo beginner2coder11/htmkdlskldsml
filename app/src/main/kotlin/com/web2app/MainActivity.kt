@@ -24,6 +24,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.web2app.data.AppRepository
 import com.web2app.handlers.PermissionsHandler
+import com.web2app.models.localOrWebsiteUrl
 import com.web2app.models.parseAppConfig
 
 class MainActivity : AppCompatActivity() {
@@ -151,6 +152,11 @@ class MainActivity : AppCompatActivity() {
 
     // ─── WebView ───────────────────────────────────────────────────────────────
 
+    /** Non-null only when this app ships its own content (see [LocalContent]). */
+    private val assetLoader by lazy {
+        if (appConfig.localContent) LocalContent.loaderFor(this) else null
+    }
+
     @Suppress("SetJavaScriptEnabled")
     private fun setupWebView() {
         webView.settings.apply {
@@ -187,6 +193,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            // A bundled site is served from the app's own assets; a website app has no
+            // loader and every request goes to the network as before.
+            override fun shouldInterceptRequest(
+                view: WebView, request: WebResourceRequest
+            ): WebResourceResponse? = LocalContent.intercept(assetLoader, request)
+
             override fun shouldOverrideUrlLoading(
                 view: WebView, request: WebResourceRequest
             ): Boolean {
@@ -359,11 +371,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadCurrentUrl() {
-        val url = if (appConfig.showTabbar && appConfig.tabbars.isNotEmpty()) {
-            appConfig.tabbars.getOrNull(selectedTabIndex)?.url ?: appConfig.websiteURL
+        val target = if (appConfig.showTabbar && appConfig.tabbars.isNotEmpty()) {
+            appConfig.tabbars.getOrNull(selectedTabIndex)?.url ?: appConfig.localOrWebsiteUrl()
         } else {
-            appConfig.websiteURL
+            appConfig.localOrWebsiteUrl()
         }
+        // In a bundled app a tab's address is a path inside the bundle unless it is a
+        // full http(s) URL, which is left to the network.
+        val url = if (appConfig.localContent) LocalContent.urlFor(target) else target
         webView.loadUrl(url)
     }
 

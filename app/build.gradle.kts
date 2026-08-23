@@ -85,6 +85,8 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.swiperefreshlayout)
+    // Serves a bundled HTML/ZIP site over an https origin — see LocalContent.
+    implementation(libs.androidx.webkit)
 
     // Push notifications (OneSignal). FCM credentials live in the OneSignal
     // dashboard, so no google-services.json is needed in the app. Only activated
