@@ -202,7 +202,13 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(
                 view: WebView, request: WebResourceRequest
             ): Boolean {
-                view.loadUrl(request.url.toString())
+                // A bundled page may link to the placeholder address the builder wrote
+                // (or to a plain path); both mean "stay inside the bundle". Resolving
+                // here keeps in-page navigation working, not just the initial load.
+                val target = request.url.toString()
+                view.loadUrl(
+                    if (appConfig.localContent) LocalContent.urlFor(target) else target
+                )
                 return false
             }
 
