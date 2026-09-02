@@ -1,15 +1,10 @@
 package com.web2app
 
-import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -33,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: View
     private lateinit var bottomNav: BottomNavigationView
-    private lateinit var noInternetView: View
 
     /** Holder for the configured page loader; null/false means use the default spinner. */
     private var pageLoaderHolder: View? = null
@@ -45,8 +39,6 @@ class MainActivity : AppCompatActivity() {
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
 
-    private var connectivityManager: ConnectivityManager? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     private var selectedTabIndex = 0
 
@@ -89,7 +81,6 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh = findViewById(R.id.swipeRefresh)
         progressBar = findViewById(R.id.progressBar)
         bottomNav = findViewById(R.id.bottomNav)
-        noInternetView = findViewById(R.id.noInternetView)
 
         // Show the preview close button (faint eye behind a clear X) only when
         // previewing an app from the builder; tapping it dismisses the preview.
@@ -101,7 +92,6 @@ class MainActivity : AppCompatActivity() {
         setupPageLoader()
         setupWebView()
         setupBottomNav()
-        setupConnectivity()
         requestConfiguredPermissions()
 
         swipeRefresh.setOnRefreshListener { webView.reload() }
@@ -388,48 +378,6 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl(url)
     }
 
-    // ─── Network Connectivity (mirrors connectivityState / observeConnectivityAsFlow) ──
-
-    private fun setupConnectivity() {
-        connectivityManager =
-            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-        // Show correct initial state
-        if (isNetworkConnected()) showWebContent() else showNoInternet()
-
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                runOnUiThread { showWebContent() }
-            }
-
-            override fun onLost(network: Network) {
-                runOnUiThread { showNoInternet() }
-            }
-        }
-
-        connectivityManager?.registerNetworkCallback(request, networkCallback!!)
-    }
-
-    private fun isNetworkConnected(): Boolean {
-        val cm = connectivityManager ?: return false
-        return cm.getNetworkCapabilities(cm.activeNetwork)
-            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-    }
-
-    private fun showWebContent() {
-        swipeRefresh.visibility = View.VISIBLE
-        noInternetView.visibility = View.GONE
-    }
-
-    private fun showNoInternet() {
-        swipeRefresh.visibility = View.GONE
-        noInternetView.visibility = View.VISIBLE
-    }
-
     // ─── Permissions (mirrors PermissionsWrapper composable in reference) ──────
 
     private fun requestConfiguredPermissions() {
@@ -523,10 +471,5 @@ class MainActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
     }
 }
