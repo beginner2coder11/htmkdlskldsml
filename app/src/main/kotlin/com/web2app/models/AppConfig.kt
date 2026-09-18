@@ -50,7 +50,12 @@ data class AppConfig(
     /** Loader shown while web pages load inside the WebView. */
     val pageLoader: PageLoader = PageLoader(),
     /** Swipe-down-to-refresh gesture on the WebView (off by default). */
-    val pullRefresh: Boolean = false
+    val pullRefresh: Boolean = false,
+    /**
+     * Hide the status and navigation bars so the page owns the whole display. The
+     * bars return on a swipe from the edge and hide again on their own.
+     */
+    val fullScreen: Boolean = false
 )
 
 data class PageLoader(
@@ -230,7 +235,8 @@ fun parseAppConfig(json: JSONObject): AppConfig {
         onboardingCardColor = json.optString("onboardingCardColor", "#FFFFFF"),
         onboardingImageShape = json.optInt("onboardingImageShape", 0),
         pageLoader = pageLoader,
-        pullRefresh = json.optBoolean("pullRefresh", false)
+        pullRefresh = json.optBoolean("pullRefresh", false),
+        fullScreen = json.optBoolean("fullScreen", false)
     )
 }
 
@@ -321,6 +327,7 @@ fun appConfigToJson(config: AppConfig): JSONObject {
     plObj.put("loaderThickness", config.pageLoader.loaderThickness)
     obj.put("pageLoader", plObj)
     obj.put("pullRefresh", config.pullRefresh)
+    obj.put("fullScreen", config.fullScreen)
     return obj
 }
 

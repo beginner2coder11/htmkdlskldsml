@@ -43,6 +43,18 @@ class MainActivity : AppCompatActivity() {
     private var selectedTabIndex = 0
 
     companion object {
+        /**
+         * Web hosts whose only purpose is to deep-link into an app. An https link to one
+         * of these is handed to the system (which routes it to the app via App Links)
+         * rather than loaded in the WebView.
+         */
+        private val APP_LINK_HOSTS = setOf(
+            "wa.me", "api.whatsapp.com", "chat.whatsapp.com",   // WhatsApp
+            "t.me", "telegram.me",                                // Telegram
+            "m.me",                                               // Messenger
+            "play.google.com",                                    // Play Store
+            "maps.google.com", "maps.app.goo.gl",                 // Google Maps
+        )
         const val EXTRA_APP_ID = "extra_app_id"
         private const val DEFAULT_THEME = 0xFF5B5BD6.toInt()
     }
@@ -76,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         applySystemBarInsets(R.id.mainRoot, R.id.statusBarScrim)
         applyBrandSurfaces()
+        if (appConfig.fullScreen) enterFullScreen()
 
         webView = findViewById(R.id.webView)
         swipeRefresh = findViewById(R.id.swipeRefresh)
@@ -192,13 +205,42 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(
                 view: WebView, request: WebResourceRequest
             ): Boolean {
+                val uri = request.url
+                val target = uri.toString()
+
+                // Anything that is not a web page belongs to another app: tel:, mailto:,
+                // sms:, whatsapp:, geo:, market:, intent:, and the rest. WebView cannot
+                // render those (it shows ERR_UNKNOWN_URL_SCHEME), so hand them to the
+                // system and keep the page where it is.
+                val scheme = uri.scheme?.lowercase()
+                if (scheme != null && scheme != "http" && scheme != "https" &&
+                    scheme != "file" && scheme != "about" && scheme != "javascript" &&
+                    scheme != "data" && scheme != "blob"
+                ) {
+                    openExternally(target)
+                    return true
+                }
+
+                // Some https links exist only to open another app: wa.me, t.me, the Play
+                // Store, Google Maps. Rendered in the WebView they show that service's
+                // marketing site instead — so treat them like a custom scheme.
+                if (uri.host?.lowercase()?.let { h -> APP_LINK_HOSTS.any { h == it || h.endsWith(".$it") } } == true) {
+                    openExternally(target)
+                    return true
+                }
+
                 // A bundled page may link to the placeholder address the builder wrote
                 // (or to a plain path); both mean "stay inside the bundle". Resolving
                 // here keeps in-page navigation working, not just the initial load.
-                val target = request.url.toString()
-                view.loadUrl(
-                    if (appConfig.localContent) LocalContent.urlFor(target) else target
-                )
+                // Only take over when the address actually changes — returning false
+                // AFTER calling loadUrl used to load every link twice.
+                if (appConfig.localContent) {
+                    val resolved = LocalContent.urlFor(target)
+                    if (resolved != target) {
+                        view.loadUrl(resolved)
+                        return true
+                    }
+                }
                 return false
             }
 
@@ -428,6 +470,61 @@ class MainActivity : AppCompatActivity() {
         val activeColor = safeParseColor(appConfig.tabSettings.tabActiveColor, Color.BLUE)
         val rawBarColor = safeParseColor(appConfig.tabSettings.tabBarColor, Color.WHITE)
         return if (rawBarColor == Color.WHITE) lightTint(activeColor, 0.08f) else rawBarColor
+    }
+
+    /**
+     * Sends a non-web link to whatever app handles it. `intent:` URIs carry their own
+     * target (and often a `browser_fallback_url`); every other scheme is a plain VIEW.
+     * A scheme nobody on the device handles is reported, not swallowed — a dead tap
+     * with no feedback reads as a broken app.
+     */
+    private fun openExternally(url: String) {
+        try {
+            if (url.startsWith("intent:", ignoreCase = true)) {
+                val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                // Try the launch rather than resolveActivity() first: since Android 11
+                // that query answers "none" for any package not declared in <queries>,
+                // which sent every intent:// link to its browser fallback even with the
+                // target app installed. startActivity itself is not filtered.
+                try {
+                    startActivity(intent)
+                    return
+                } catch (_: android.content.ActivityNotFoundException) {
+                    val fallback = intent.getStringExtra("browser_fallback_url")
+                    if (!fallback.isNullOrBlank()) {
+                        webView.loadUrl(fallback)
+                        return
+                    }
+                    throw android.content.ActivityNotFoundException()
+                }
+            }
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(
+                this, getString(R.string.no_app_for_link), android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * Hides both system bars and lets the page take the whole display. The bars come
+     * back transiently on an edge swipe and hide themselves again. Hiding also zeroes
+     * the system-bar insets, so the status scrim and root padding from
+     * applySystemBarInsets collapse on their own — nothing else to undo.
+     */
+    private fun enterFullScreen() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    /** Re-hide the bars after another window (a dialog, the file picker) showed them. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && appConfig.fullScreen) enterFullScreen()
     }
 
     /**

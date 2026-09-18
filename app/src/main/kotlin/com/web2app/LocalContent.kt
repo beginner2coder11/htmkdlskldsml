@@ -114,6 +114,14 @@ object LocalContent {
         var clean = entry.trim()
         if (clean.startsWith(PLACEHOLDER_ORIGIN, true)) {
             clean = clean.removeRange(0, PLACEHOLDER_ORIGIN.length)
+        } else if (clean.startsWith(ORIGIN, true)) {
+            // A root-absolute link in a bundled page ("/pages/x.html") is resolved by
+            // the WebView against the asset origin BEFORE we see it, which drops the
+            // /web/ prefix the loader serves from and dead-ends in ERR_NAME_NOT_RESOLVED.
+            // Already under /web/ → leave it; otherwise re-root it under the bundle.
+            val rest = clean.substring(ORIGIN.length)
+            if (rest.startsWith(PATH, true)) return clean
+            clean = rest
         } else if (clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
             return clean
         }
